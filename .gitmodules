@@ -1,0 +1,3 @@
+[submodule "Awincs"]
+	path = Awincs
+	url = git@github.com:maxnevans/Awincs

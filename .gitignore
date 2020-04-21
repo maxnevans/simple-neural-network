@@ -1,0 +1,10 @@
+# Directories
+Debug/
+Release/
+bin/
+obj/
+.vs/
+
+#Files
+*.user
+*.aps
