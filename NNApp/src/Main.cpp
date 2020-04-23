@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include <Awincs.h>
+#include "NeuralNetwork.h"
 
 using InputRef = std::shared_ptr<Awincs::InputComponent>;
 using ButtonRef = std::shared_ptr<Awincs::ButtonComponent>;
@@ -36,6 +37,59 @@ const wchar_t* SAVE_NN_PANEL_TITLE_BAR = L"Nural Network - Save";
 const wchar_t* LOAD_NN_PANEL_TITLE_BAR = L"Nueral Network - Load";
 const wchar_t* TRAIN_NN_PANEL_TITLE_BAR = L"Nueral Network - Train";
 
+NN::NeuralNetwork nn;
+
+
+/*********************************************************/
+/*                      UIParse                          */
+
+template<typename T>
+std::vector<T> parseVectorFromString(std::wstring str, wchar_t delimiter = L',')
+{
+    static_assert(false);
+}
+
+template<>
+std::vector<double> parseVectorFromString(std::wstring str, wchar_t delimiter)
+{
+    expect(str.size() > 0);
+
+    std::vector<double> output;
+
+    auto delim = str.begin();
+    while (delim != str.end())
+    {
+        auto nextDelim = std::find(delim, str.end(), delimiter);
+        output.emplace_back(std::stod(std::wstring(delim, nextDelim)));
+        if (nextDelim == str.end())
+            return output;
+        delim = nextDelim + 1;
+    }
+
+    return output;
+}
+
+template<>
+std::vector<int> parseVectorFromString<int>(std::wstring str, wchar_t delimiter)
+{
+    expect(str.size() > 0);
+
+    std::vector<int> output;
+
+    auto delim = str.begin();
+    while (delim != str.end())
+    {
+        auto nextDelim = std::find(delim, str.end(), delimiter);
+        output.emplace_back(std::stoi(std::wstring(delim, nextDelim)));
+        if (nextDelim == str.end())
+            return output;
+        delim = nextDelim + 1;
+    }
+
+    return output;
+}
+/*********************************************************/
+/*********************************************************/
 
 /*********************************************************/
 /*                  Panel switch handlers                */
@@ -114,20 +168,49 @@ auto onLoadTrainingDataClick = [](const Awincs::Component::Point& p)
 
 
 
-
 /*********************************************************/
 /*                   Classification                      */
 auto onClassifyClick = [](const Awincs::Component::Point& p)
 {
+    static std::vector<int> layers = {};
+
+    if (auto newLayers = parseVectorFromString<int>(inputs.layers->getText()); newLayers != layers)
+    {
+        layers = newLayers;
+        nn.clear();
+
+        for (const auto& layer : layers)
+            nn.pushLayer(layer);
+
+        const double maxLim = 1;
+        const double minLim = -1;
+
+        for (size_t i = 0; i < layers.size() - 1; i++)
+            nn.setupWeights(i, i + 1, NN::NeuralNetwork::randomizeWeights(minLim, maxLim, layers[i], layers[i + 1]));
+    }
+
+    auto vec = parseVectorFromString<double>(inputs.classify->getText());
+
+    auto classification = nn.classify(vec);
+
+    auto maxIterator = std::max_element(classification.begin(), classification.end());
+    auto classIndex = std::distance(classification.begin(), maxIterator);
+    std::wstringstream ss;
+    ss << classIndex << L" class";
+
     if (inputs.classifyOutput)
     {
-        inputs.classifyOutput->setText(L"unknown class");
+        inputs.classifyOutput->setText(ss.str());
         inputs.classifyOutput->redraw();
     }
 };
 
 /*********************************************************/
 /*********************************************************/
+
+
+/*********************************************************/
+/*                      UISetup                          */
 
 ButtonRef createButton(Awincs::Component::Point a, std::wstring content)
 {
@@ -152,7 +235,7 @@ void setupTitleBar(const WindowRef& wnd)
     panels.titleBar = titleBar;
 }
 
-void setupInputDataRow(const ComponentRef& cm, int height, std::wstring name)
+InputRef setupInputDataRow(const ComponentRef& cm, int height, std::wstring name)
 {
     auto label = std::make_shared<Awincs::PanelComponent>();
     label->setText(name);
@@ -167,6 +250,8 @@ void setupInputDataRow(const ComponentRef& cm, int height, std::wstring name)
     input->setDimensions({ 250, 30 });
     input->setAnchorPoint({ 100, height });
     input->setParent(cm);
+    
+    return input;
 }
 
 
@@ -177,7 +262,8 @@ ComponentRef setupMainPanel(const ComponentRef& cmp, Awincs::Component::Point a,
     panel->setAnchorPoint(a);
     panel->setParent(cmp);
 
-    setupInputDataRow(panel, 10, L"Layers:");
+    auto layersInput = setupInputDataRow(panel, 10, L"Layers:");
+    inputs.layers = layersInput;
 
     auto loadButton = createButton({10, 50}, L"Load");
     loadButton->setParent(panel);
@@ -189,7 +275,8 @@ ComponentRef setupMainPanel(const ComponentRef& cmp, Awincs::Component::Point a,
     trainButton->setParent(panel);
     trainButton->onClick(onTrainNNClick);
 
-    setupInputDataRow(panel, 90, L"Classify: ");
+    auto classifyInput = setupInputDataRow(panel, 90, L"Classify: ");
+    inputs.classify = classifyInput;
 
     auto classifyButton = createButton({ 10, 130 }, L"Classify");
     classifyButton->setParent(panel);
@@ -317,3 +404,6 @@ Awincs::AppRetType Awincs::App(std::vector<std::wstring> args)
     wnd->show();
     return { wnd };
 }
+
+/*********************************************************/
+/*********************************************************/
