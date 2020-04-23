@@ -1,3 +1,6 @@
+[submodule "DebugConsole"]
+	path = DebugConsole
+	url = git@github.com:maxnevans/DebugConsole
 [submodule "Awincs"]
 	path = Awincs
 	url = git@github.com:maxnevans/Awincs

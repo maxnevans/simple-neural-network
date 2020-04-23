@@ -7,6 +7,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NNApp", "NNApp\NNApp.vcxpro
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Awincs", "Awincs\Awincs.vcxproj", "{1F1A23CF-45A9-433C-8D12-6EF163978683}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DebugConsole", "DebugConsole\DebugConsole.vcxproj", "{72CC32FD-8896-4520-815B-A894B10356C3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -31,6 +33,14 @@ Global
 		{1F1A23CF-45A9-433C-8D12-6EF163978683}.Release|x64.Build.0 = Release|x64
 		{1F1A23CF-45A9-433C-8D12-6EF163978683}.Release|x86.ActiveCfg = Release|Win32
 		{1F1A23CF-45A9-433C-8D12-6EF163978683}.Release|x86.Build.0 = Release|Win32
+		{72CC32FD-8896-4520-815B-A894B10356C3}.Debug|x64.ActiveCfg = Debug|x64
+		{72CC32FD-8896-4520-815B-A894B10356C3}.Debug|x64.Build.0 = Debug|x64
+		{72CC32FD-8896-4520-815B-A894B10356C3}.Debug|x86.ActiveCfg = Debug|Win32
+		{72CC32FD-8896-4520-815B-A894B10356C3}.Debug|x86.Build.0 = Debug|Win32
+		{72CC32FD-8896-4520-815B-A894B10356C3}.Release|x64.ActiveCfg = Release|x64
+		{72CC32FD-8896-4520-815B-A894B10356C3}.Release|x64.Build.0 = Release|x64
+		{72CC32FD-8896-4520-815B-A894B10356C3}.Release|x86.ActiveCfg = Release|Win32
+		{72CC32FD-8896-4520-815B-A894B10356C3}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
