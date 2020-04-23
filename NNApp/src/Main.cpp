@@ -1,5 +1,8 @@
 #include "pch.h"
 
+#include <fstream>
+#include <string>
+#include <sstream>
 #include <Awincs.h>
 #include "NeuralNetwork.h"
 
@@ -9,6 +12,8 @@ using PanelRef = std::shared_ptr<Awincs::PanelComponent>;
 using ComponentRef = std::shared_ptr<Awincs::Component>;
 using WindowRef = std::shared_ptr<Awincs::WindowController>;
 using TitleBarRef = std::shared_ptr<Awincs::TitleBarComponent>;
+
+using namespace std::literals::string_literals;
 
 struct
 {
@@ -25,7 +30,7 @@ struct
 {
 
     TitleBarRef titleBar            = nullptr;
-    ComponentRef window             = nullptr;
+    WindowRef window                = nullptr;
     ComponentRef mainNNPanel        = nullptr;
     ComponentRef loadNNPanel        = nullptr;
     ComponentRef saveNNPanel        = nullptr;
@@ -39,6 +44,31 @@ const wchar_t* TRAIN_NN_PANEL_TITLE_BAR = L"Nueral Network - Train";
 
 NN::NeuralNetwork nn;
 
+
+/*********************************************************/
+/*                      UIParse                          */
+void setupNeuralNetwork(std::vector<int> newLayers, bool force = false)
+{
+    static std::vector<int> layers = {};
+
+    if (force || newLayers != layers)
+    {
+        layers = newLayers;
+        nn.clear();
+
+        for (const auto& layer : layers)
+            nn.pushLayer(layer);
+
+        const double maxLim = 1;
+        const double minLim = -1;
+
+        for (size_t i = 0; i < layers.size() - 1; i++)
+            nn.setupWeights(i, i + 1, NN::NeuralNetwork::randomizeWeights(minLim, maxLim, layers[i], layers[i + 1]));
+    }
+}
+
+/*********************************************************/
+/*********************************************************/
 
 /*********************************************************/
 /*                      UIParse                          */
@@ -150,17 +180,171 @@ auto onBackClick = [](const Awincs::Component::Point& p)
 
 auto onLoadNNDataClick = [](const Awincs::Component::Point& p)
 {
-    // TODO
+    std::wstring filename = inputs.loadNeuralNetwork->getText();
+    std::ifstream ifs(filename, std::ios_base::binary);
+
+    if (!ifs)
+    {
+        MessageBox(NULL, L"Failed to open neural network file", L"Neural network open failed!", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    nn.clear();
+
+    size_t lCount = 0;
+    ifs.read(reinterpret_cast<char*>(&lCount), sizeof(lCount));
+
+    for (size_t i = 0; i < lCount; i++)
+    {
+        int countNeurons = 0;
+        ifs.read(reinterpret_cast<char*>(&countNeurons), sizeof(countNeurons));
+        nn.pushLayer(countNeurons);
+    }
+
+    inputs.statusBar->setText(L"Reading neural network from \""s + filename + L"\"..."s);
+    inputs.statusBar->redraw();
+
+    for (size_t i = 0; i < lCount - 1; i++)
+    {
+        size_t countWeights = 0;
+        ifs.read(reinterpret_cast<char*>(&countWeights), sizeof(countWeights));
+
+        std::vector<double> vWeight;
+        for (size_t j = 0; j < countWeights; j++)
+        {
+            double weight = 0;
+            ifs.read(reinterpret_cast<char*>(&weight), sizeof(weight));
+            vWeight.emplace_back(weight);
+        }
+
+        nn.setupWeights(i ,i + 1, vWeight);
+        panels.window->processMessages();
+    }
+
+    ifs.close();
+
+    inputs.statusBar->setText(L"Reading is completed!"s);
+    inputs.statusBar->redraw();
+
+    std::wstringstream ss;
+    auto layers = nn.getLayers();
+    for (size_t i = 0; i < layers.size(); i++)
+    {
+        ss << layers[i];
+        if (i != layers.size() - 1)
+            ss << L',';
+    }
+
+    inputs.layers->setText(ss.str());
+    inputs.layers->redraw();
 };
 
 auto onSaveNNDataClick = [](const Awincs::Component::Point& p)
 {
-    // TODO
+    std::wstring filename = inputs.saveNeuralNetwork->getText();
+    std::ofstream ofs(filename, std::ios_base::binary);
+
+    if (!ofs)
+    {
+        MessageBox(NULL, L"Failed to create neural network file", L"Neural network create failed!", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    const auto layers = nn.getLayers();
+    size_t lCount = layers.size();
+
+    ofs.write(reinterpret_cast<char*>(&lCount), sizeof(lCount));
+
+    for (const auto& lSize : layers)
+        ofs.write(reinterpret_cast<const char*>(&lSize), sizeof(lSize));
+
+    const auto& vWeights = nn.getWeights();
+
+    inputs.statusBar->setText(L"Writing neural network to \""s + filename + L"\"..."s);
+    inputs.statusBar->redraw();
+
+    for (const auto& vWeight : vWeights)
+    {
+        size_t vecSize = vWeight.size();
+        ofs.write(reinterpret_cast<char*>(&vecSize), sizeof(vecSize));
+
+        for (const auto& weight : vWeight)
+            ofs.write(reinterpret_cast<const char*>(&weight), sizeof(weight));
+
+        panels.window->processMessages();
+    }
+    ofs.close();
+
+    inputs.statusBar->setText(L"Writting is completed!"s);
+    inputs.statusBar->redraw();
 };
 
 auto onLoadTrainingDataClick = [](const Awincs::Component::Point& p)
 {
-    // TODO
+    if (!inputs.loadTrainingData)
+        return;
+
+    if (!inputs.layers)
+        return;
+
+    std::wstring filename = inputs.loadTrainingData->getText();
+    std::wifstream ifs(filename);
+
+    if (!ifs)
+        MessageBox(NULL, L"Failed to open training data file", L"Traing data open failed!", MB_OK | MB_ICONWARNING);
+
+    const auto layers = parseVectorFromString<int>(inputs.layers->getText());
+    const int countInputNeurons = layers.front();
+    const int countOutputNeurons = layers.back();
+
+    /* Reading training set */
+    std::vector<std::pair<std::vector<double>, std::vector<double>>> trainingSet;
+    std::wstring line;
+    int lineNumber = 1;
+    while (std::getline(ifs, line))
+    {
+        size_t index = line.find_first_of(L' ');
+        auto cls = parseVectorFromString<double>(line.substr(0, index));
+        index += 1;
+        auto vec = parseVectorFromString<double>(line.substr(index));
+
+        if (cls.size() != countOutputNeurons)
+            DCONSOLE(L"Output neurons count missmatch! Actual: " << cls.size() << L"; expected: " 
+                << countOutputNeurons << L". File: " << filename << L"; Line: " << lineNumber << L"\n");
+
+        if (vec.size() != countInputNeurons)
+            DCONSOLE(L"Input neurons count missmatch! Actual: " << vec.size() << L"; expected: "
+                << countInputNeurons << L". File: " << filename << L"; Line: " << lineNumber << L"\n");
+
+        trainingSet.push_back({ vec, cls });
+        panels.window->processMessages();
+        lineNumber++;
+    }
+    ifs.close();
+
+    /* Setupping Neural Network */
+    setupNeuralNetwork(layers, true);
+
+    /* Trainning */
+    const int countIterations = 10000;
+
+    for (int i = 0; i < countIterations; i++)
+    {
+        for (const auto& ts : trainingSet)
+        {
+            panels.window->processMessages();
+            nn.train(ts.first, ts.second);
+        }
+
+        if (i % 10)
+        {
+            inputs.statusBar->setText(L"Training iteration: "s + std::to_wstring(i));
+            inputs.statusBar->redraw();
+        }
+    }
+
+    inputs.statusBar->setText(L"Training completed!");
+    inputs.statusBar->redraw();
 };
 
 /*********************************************************/
@@ -172,22 +356,16 @@ auto onLoadTrainingDataClick = [](const Awincs::Component::Point& p)
 /*                   Classification                      */
 auto onClassifyClick = [](const Awincs::Component::Point& p)
 {
-    static std::vector<int> layers = {};
+    if (!inputs.layers)
+        return;
 
-    if (auto newLayers = parseVectorFromString<int>(inputs.layers->getText()); newLayers != layers)
-    {
-        layers = newLayers;
-        nn.clear();
+    if (!inputs.classifyOutput)
+        return;
 
-        for (const auto& layer : layers)
-            nn.pushLayer(layer);
+    if (!inputs.classify)
+        return;
 
-        const double maxLim = 1;
-        const double minLim = -1;
-
-        for (size_t i = 0; i < layers.size() - 1; i++)
-            nn.setupWeights(i, i + 1, NN::NeuralNetwork::randomizeWeights(minLim, maxLim, layers[i], layers[i + 1]));
-    }
+    setupNeuralNetwork(parseVectorFromString<int>(inputs.layers->getText()));
 
     auto vec = parseVectorFromString<double>(inputs.classify->getText());
 
@@ -221,6 +399,12 @@ ButtonRef createButton(Awincs::Component::Point a, std::wstring content)
     button->setAnchorPoint(a);
     button->setDimensions({width, height});
     button->setText(content);
+    button->setBackgroundColor(Awincs::makeARGB(222, 222, 222), Awincs::ComponentState::DEFAULT);
+    button->setBackgroundColor(Awincs::makeARGB(163, 163, 163), Awincs::ComponentState::HOVER);
+    button->setBackgroundColor(Awincs::makeARGB(163, 163, 163), Awincs::ComponentState::ACTIVE);
+    button->setTextColor(Awincs::makeARGB(163, 163, 163), Awincs::ComponentState::DEFAULT);
+    button->setTextColor(Awincs::makeARGB(110, 110, 110), Awincs::ComponentState::HOVER);
+    button->setTextColor(Awincs::makeARGB(110, 110, 110), Awincs::ComponentState::ACTIVE);
 
     return button;
 }
@@ -232,6 +416,18 @@ void setupTitleBar(const WindowRef& wnd)
     titleBar->setText(MAIN_NN_PANEL_TITLE_BAR);
     titleBar->showText();
     titleBar->setParent(wnd);
+    titleBar->setBackgroundColor(Awincs::makeARGB(222, 222, 222), Awincs::ComponentState::DEFAULT);
+    titleBar->setBackgroundColor(Awincs::makeARGB(222, 222, 222), Awincs::ComponentState::HOVER);
+    titleBar->setBackgroundColor(Awincs::makeARGB(222, 222, 222), Awincs::ComponentState::ACTIVE);
+    titleBar->setTextColor(Awincs::makeARGB(163, 163, 163), Awincs::ComponentState::DEFAULT);
+    titleBar->setTextColor(Awincs::makeARGB(110, 110, 110), Awincs::ComponentState::HOVER);
+    titleBar->setTextColor(Awincs::makeARGB(110, 110, 110), Awincs::ComponentState::ACTIVE);
+    auto cb = titleBar->getCloseButton();
+    cb->setCrossColor(Awincs::makeARGB(222, 62, 27), Awincs::ComponentState::DEFAULT);
+    cb->setCrossColor(Awincs::makeARGB(222, 222, 222), Awincs::ComponentState::HOVER);
+    cb->setCrossColor(Awincs::makeARGB(222, 222, 222), Awincs::ComponentState::ACTIVE);
+    cb->setBackgroundColor(Awincs::makeARGB(222, 62, 27), Awincs::ComponentState::HOVER);
+    cb->setBackgroundColor(Awincs::makeARGB(222, 62, 27), Awincs::ComponentState::ACTIVE);
     panels.titleBar = titleBar;
 }
 
@@ -268,10 +464,10 @@ ComponentRef setupMainPanel(const ComponentRef& cmp, Awincs::Component::Point a,
     auto loadButton = createButton({10, 50}, L"Load");
     loadButton->setParent(panel);
     loadButton->onClick(onLoadNNClick);
-    auto saveButton = createButton({ 110, 50 }, L"Save");
+    auto saveButton = createButton({ 120, 50 }, L"Save");
     saveButton->setParent(panel);
     saveButton->onClick(onSaveNNClick);
-    auto trainButton = createButton({ 220, 50 }, L"Train");
+    auto trainButton = createButton({ 230, 50 }, L"Train");
     trainButton->setParent(panel);
     trainButton->onClick(onTrainNNClick);
 
@@ -287,7 +483,7 @@ ComponentRef setupMainPanel(const ComponentRef& cmp, Awincs::Component::Point a,
     answerLabel->setAnchorPoint({120, 130});
     answerLabel->setParent(panel);
     answerLabel->showText();
-    answerLabel->setText(L"1 class");
+    answerLabel->setText(L"<undefined class>");
     answerLabel->setTextAlignment(Gdiplus::StringAlignment::StringAlignmentCenter, Gdiplus::StringAlignment::StringAlignmentCenter);
     answerLabel->setTextAnchorPoint({50, 15});
     inputs.classifyOutput = answerLabel;
@@ -309,6 +505,12 @@ ComponentRef setupStatusBar(const ComponentRef& cmp)
     panel->setText(L"Status: ok.");
     panel->setTextAlignment(Gdiplus::StringAlignment::StringAlignmentNear, Gdiplus::StringAlignment::StringAlignmentCenter);
     panel->setTextAnchorPoint({ leftPadding, panelHeight /2 });
+    panel->setBackgroundColor(Awincs::makeARGB(222, 222, 222), Awincs::ComponentState::DEFAULT);
+    panel->setBackgroundColor(Awincs::makeARGB(166, 166, 166), Awincs::ComponentState::HOVER);
+    panel->setBackgroundColor(Awincs::makeARGB(166, 166, 166), Awincs::ComponentState::ACTIVE);
+    panel->setTextColor(Awincs::makeARGB(163, 163, 163), Awincs::ComponentState::DEFAULT);
+    panel->setTextColor(Awincs::makeARGB(110, 110, 110), Awincs::ComponentState::HOVER);
+    panel->setTextColor(Awincs::makeARGB(110, 110, 110), Awincs::ComponentState::ACTIVE);
     inputs.statusBar = panel;
 
     return panel;
@@ -321,10 +523,12 @@ ComponentRef setupLoadPanel(const ComponentRef& cmp, Awincs::Component::Point a,
     panel->setAnchorPoint(a);
     panel->setParent(cmp);
 
-    setupInputDataRow(panel, 10, L"Filepath: ");
+    auto loadFilpath = setupInputDataRow(panel, 10, L"Filepath: ");
+    inputs.loadNeuralNetwork = loadFilpath;
 
     auto loadButton = createButton({10, 50}, L"Load");
     loadButton->setParent(panel);
+    loadButton->onClick(onLoadNNDataClick);
 
     auto backButton = createButton({ 120, 50 }, L"Back");
     backButton->setParent(panel);
@@ -340,10 +544,12 @@ ComponentRef setupSavePanel(const ComponentRef& cmp, Awincs::Component::Point a,
     panel->setAnchorPoint(a);
     panel->setParent(cmp);
 
-    setupInputDataRow(panel, 10, L"Filepath: ");
+    auto saveFilepath = setupInputDataRow(panel, 10, L"Filepath: ");
+    inputs.saveNeuralNetwork = saveFilepath;
 
     auto saveButton = createButton({ 10, 50 }, L"Save");
     saveButton->setParent(panel);
+    saveButton->onClick(onSaveNNDataClick);
 
     auto backButton = createButton({ 120, 50 }, L"Back");
     backButton->setParent(panel);
@@ -359,10 +565,12 @@ ComponentRef setupTrainPanel(const ComponentRef& cmp, Awincs::Component::Point a
     panel->setAnchorPoint(a);
     panel->setParent(cmp);
 
-    setupInputDataRow(panel, 10, L"Filepath: ");
+    auto filepathInput = setupInputDataRow(panel, 10, L"Filepath: ");
+    inputs.loadTrainingData = filepathInput;
 
-    auto loadButton = createButton({ 10, 50 }, L"Load");
+    auto loadButton = createButton({ 10, 50 }, L"Train");
     loadButton->setParent(panel);
+    loadButton->onClick(onLoadTrainingDataClick);
 
     auto backButton = createButton({ 120, 50 }, L"Back");
     backButton->setParent(panel);

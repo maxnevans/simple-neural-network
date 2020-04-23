@@ -19,6 +19,7 @@ namespace NN
         std::vector<double> classify(std::vector<double> input);
         void setLearningFactor(double factor);
         void clear();
+        std::vector<std::vector<double>> getWeights();
 
         static std::vector<double> randomizeWeights(double lowerLimit, double higherLimit, int countNeuronsLayerA, int countNeuronsLayerB);
 

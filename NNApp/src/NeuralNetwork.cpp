@@ -78,6 +78,15 @@ namespace NN
         layers.clear();
         weights.clear();
     }
+    std::vector<std::vector<double>> NeuralNetwork::getWeights()
+    {
+        std::vector<std::vector<double>> output;
+
+        for (const auto& weight : this->weights)
+            output.emplace_back(std::begin(weight), std::end(weight));
+
+        return output;
+    }
     std::vector<double> NeuralNetwork::randomizeWeights(double lowerLimit, double highterLimit, int countNeuronsLayerA, int countNeuronsLayerB)
     {
         std::random_device rd;
